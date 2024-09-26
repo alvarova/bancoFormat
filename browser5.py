@@ -1,6 +1,7 @@
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import StringVar
 from tkinter import *
 import csv
 import math
@@ -95,7 +96,6 @@ def add_or_edit_item(item_id=None):
 
 
 
-
 # exFunción para agregar un nuevo item, se reemplaza por la funcion AGREGA y Modifica
 def add_new_item():
     add_or_edit_item()
@@ -108,6 +108,30 @@ def edit_item(event):
 
 def update_export_button():
     export_button.config(text=f"Descargar ({len(selected_ids)})")
+
+
+# Funcion para la busqueda desde inputbox
+def search_filter(*args):
+    search_text = search_var.get().strip()
+    if len(search_text) >= 3:
+        if search_text.isdigit():
+            query = "SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur FROM Empleados WHERE Cuit LIKE ? ORDER BY Apellido, Nombre"
+            params = ('%' + search_text + '%',)
+        else:
+            query = "SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur FROM Empleados WHERE Apellido LIKE ? OR Nombre LIKE ? ORDER BY Apellido, Nombre"
+            params = ('%' + search_text + '%', '%' + search_text + '%')
+        
+        cursor.execute(query, params)
+    else:
+        cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur FROM Empleados ORDER BY Apellido, Nombre LIMIT ? OFFSET ?", (items_per_page, current_page * items_per_page))
+    
+    rows = cursor.fetchall()
+    tree.delete(*tree.get_children())
+    for row in rows:
+        tree.insert("", "end", values=row, tags=('selected',) if row[0] in selected_ids else ())
+    
+    update_export_button()
+
 
 
 # Función para recargar datos desde la db segun la painga
@@ -132,6 +156,8 @@ def update_data():
         cursor.execute("UPDATE Empleados SET Apellido=?, Nombre=?, NroDoc=?, Cuit=?, Sucur=? WHERE id=?", (values[1], values[2], values[3], values[4], values[5], values[0]))
     conn.commit()
     messagebox.showinfo("Actualización", "Datos actualizados correctamente")
+
+
 
 # Función para exportar datos seleccionados a CSV
 def export_to_csv():
@@ -170,7 +196,7 @@ def update_selected_items_window():
     
     if selected_items_window is None or not selected_items_window.winfo_exists():
         selected_items_window = tk.Toplevel(root)
-        selected_items_window.title("Elementos seleccionados")
+        selected_items_window.title("Lista para exportar")
         selected_items_window.geometry("300x400")
         
         global selected_listbox
@@ -215,9 +241,6 @@ def on_select(event):
 
 
 
-
-
-
 # Funcion para limpiar todos los elementos del listado
 def clear_selections():
     global selected_ids
@@ -254,6 +277,12 @@ tree.bind('<ButtonRelease-1>', on_select)
 # Botones de navegación y acciones
 frame = tk.Frame(root)
 frame.pack()
+
+# Cuadro de búsqueda
+search_var = StringVar()
+search_var.trace_add("write", lambda *args: search_filter())
+search_entry = ttk.Entry(frame, textvariable=search_var, width=30)
+search_entry.pack(side=tk.LEFT, padx=(10, 5))
 
 add_button = tk.Button(frame, text="Agregar+", command=add_new_item)
 add_button.pack(side=tk.LEFT, padx=10)
