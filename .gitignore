@@ -1,0 +1,11 @@
+
+###> Omitir archivos base ###
+/.env.local
+/.env.local.php
+/.env.*.local
+/sql/
+/mdb/
+/db/banco.db
+bancoSantafe.db
+empleados.db
+selected_data.csv

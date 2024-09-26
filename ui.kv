@@ -1,0 +1,68 @@
+MDScreen:
+# Imagen de fondo
+    Image:
+        source: 'fondo3.jpg'
+        allow_stretch: True
+        keep_ratio: False
+        size_hint: 1, 1    
+    MDTopAppBar:
+        id: menu_button
+        title: 'Banco Santa Fe'
+        pos_hint: {'top':1, "x": 0}
+        
+        left_action_items: [['menu', lambda x: app.open_menu(x)]]
+        # Agrega los tres items a la barra superior
+    
+
+    MDBoxLayout:
+        size_hint_y: None
+        size_hint_x: 0.5
+        height: dp(50)
+        padding: dp(210), dp(10), dp(10), 0
+        BoxLayout:
+            orientation: 'horizontal'
+            Label:
+                id: estado_label
+                text: "Resultado: -"
+                size_hint_x: None
+                width: dp(200)
+                halign: 'right'
+                valign: 'middle'
+                text_size: self.size
+                color: 0, 0, 0, 1  # Color negro (RGBA)
+
+    MDBoxLayout:
+        orientation: 'vertical'
+        id: box
+        
+        MDLabel:
+            text: 'Estado del proceso: Detenido'
+            halign: 'center'
+            font_size: '20sp'
+            size_hint_y: None
+            height: self.texture_size[1]
+        
+        MDRaisedButton:
+            text: 'Abrir Archivo'
+            on_release: app.abrirArchivo()
+            disabled: app.is_process_file_empty  # Deshabilitar el botón si no hay archivo
+    
+    MDFloatLayout:
+        id: file_manager
+        MDRoundFlatIconButton:
+            text: "Cargar planilla"
+            icon: "folder"
+            pos_hint: {"center_x": .4, "center_y": .5}
+            on_release: app.file_manager_open()
+
+        MDRoundFlatIconButton:
+            id: botonProcesa
+            text: "Procesar"
+            icon: "application-export"
+            pos_hint: {"center_x": .6, "center_y": .5}
+            on_release: app.procesa()
+            disabled: app.is_process_file_empty  # Deshabilitar el botón si no hay archivo
+
+
+        
+    
