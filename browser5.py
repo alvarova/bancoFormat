@@ -1,6 +1,7 @@
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import simpledialog
 from tkinter import StringVar
 from tkinter import *
 import csv
@@ -17,14 +18,60 @@ root.geometry("940x580")
 
 
 
-
-
+# ******************************
 # Variables globales
+# *****************************
 current_page = 0
 items_per_page = 50
-selected_ids = set()  # Cambiado a set para una búsqueda más eficiente
+selected_ids = {}   # Cambiado a set para una búsqueda más eficiente
 export_button = None
 selected_items_window = None
+
+
+
+# Actualiza los items en la ventana flotante
+def update_selected_items_window():
+    global selected_items_window
+    
+    if selected_items_window is None or not selected_items_window.winfo_exists():
+        selected_items_window = tk.Toplevel(root)
+        selected_items_window.title("Lista para exportar")
+        selected_items_window.geometry("300x400")
+        
+        global selected_listbox
+        selected_listbox = tk.Listbox(selected_items_window, width=40, height=20)
+        selected_listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        
+        selected_listbox.bind('<Double-1>', remove_selected_item)
+        selected_listbox.bind('<ButtonRelease-1>', ask_for_amount)  # Nuevo evento
+    
+    selected_listbox.delete(0, tk.END)
+    for item_id, monto in selected_ids.items():
+        cursor.execute("SELECT Apellido, Nombre FROM Empleados WHERE id=?", (item_id,))
+        apellido, nombre = cursor.fetchone()
+        monto_str = f" - Monto: {monto}" if monto is not None else ""
+        selected_listbox.insert(tk.END, f"{item_id}: {apellido}, {nombre}{monto_str}")
+
+# Funcion para solicitar monto para cada ITEM seleccionado
+def ask_for_amount(event):
+    index = selected_listbox.nearest(event.y)
+    item = selected_listbox.get(index)
+    item_id = int(item.split(':')[0])
+    
+    current_amount = selected_ids.get(item_id, None)
+    
+    amount = simpledialog.askinteger("Ingresar Monto", 
+                                     f"Ingrese el monto para el empleado {item_id}:",
+                                     initialvalue=current_amount)
+    
+    if amount == 0:
+            selected_ids.pop(item_id)
+            update_selected_items_window()
+    elif amount is not None:
+        selected_ids[item_id] = amount
+        update_selected_items_window()
+    
+
 
 # PAGINADO
 # Función para obtener el número total de páginas
@@ -158,7 +205,7 @@ def update_data():
     messagebox.showinfo("Actualización", "Datos actualizados correctamente")
 
 
-
+'''
 # Función para exportar datos seleccionados a CSV
 def export_to_csv():
     with open('selected_data.csv', 'w', newline='') as csvfile:
@@ -172,6 +219,7 @@ def export_to_csv():
     messagebox.showinfo("Exportación", "Datos exportados correctamente")
 
 # Función para manejar la selección de checkboxes - REVISAR NO SE MUESTRAN
+
 def on_select(event):
     selected_item = tree.focus()
     item_id = tree.item(selected_item, 'values')[0]
@@ -182,6 +230,33 @@ def on_select(event):
         selected_ids.add(item_id)
         tree.item(selected_item, tags=('selected',))
     update_export_button()
+'''
+
+
+def on_select(event):
+    selected_item = tree.focus()
+    item_id = int(tree.item(selected_item, 'values')[0])
+    if item_id in selected_ids:
+        del selected_ids[item_id]
+        tree.item(selected_item, tags=())
+    else:
+        selected_ids[item_id] = None
+        tree.item(selected_item, tags=('selected',))
+    update_export_button()
+    update_selected_items_window()
+
+# Modificar la función de exportación para incluir el monto
+def export_to_csv():
+    with open('selected_data.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['id', 'Apellido', 'Nombre', 'NroDoc', 'Cuit', 'Sucur', 'Monto'])
+        for item_id, monto in selected_ids.items():
+            cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur FROM Empleados WHERE id=?", (item_id,))
+            row = cursor.fetchone()
+            if row:
+                writer.writerow(list(row) + [monto])
+    messagebox.showinfo("Exportación", "Datos exportados correctamente")
+
 
 # Funcion para activar la seleccion de item con la barraespaciadora
 def on_space(event):
@@ -189,7 +264,7 @@ def on_space(event):
     if selected_item:
         on_select(None)
 
-
+'''
 # Funciones para la VENTANA FLOTANTE - mostrar elementos seleccionados
 def update_selected_items_window():
     global selected_items_window
@@ -210,7 +285,7 @@ def update_selected_items_window():
         cursor.execute("SELECT Apellido, Nombre FROM Empleados WHERE id=?", (item_id,))
         apellido, nombre = cursor.fetchone()
         selected_listbox.insert(tk.END, f"{item_id}: {apellido}, {nombre}")
-
+'''
 def remove_selected_item(event):
     global selected_ids
     index = selected_listbox.curselection()[0]
@@ -225,18 +300,6 @@ def remove_selected_item(event):
         if tree.item(tree_item, 'values')[0] == str(item_id):
             tree.item(tree_item, tags=())
             break
-
-def on_select(event):
-    selected_item = tree.focus()
-    item_id = int(tree.item(selected_item, 'values')[0])
-    if item_id in selected_ids:
-        selected_ids.remove(item_id)
-        tree.item(selected_item, tags=())
-    else:
-        selected_ids.add(item_id)
-        tree.item(selected_item, tags=('selected',))
-    update_export_button()
-    update_selected_items_window()
 
 
 
