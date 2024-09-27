@@ -1,9 +1,12 @@
 import sqlite3
 import tkinter as tk
 from tkinter import ttk, messagebox
+from tkinter import simpledialog
+from tkinter import StringVar
 from tkinter import *
 import csv
-import math
+import math, re
+from datetime import datetime
 
 # Conexión a la base de datos
 conn = sqlite3.connect('db/banco.db')
@@ -16,19 +19,65 @@ root.geometry("940x580")
 
 
 
-
-
+# ******************************
 # Variables globales
+# *****************************
 current_page = 0
 items_per_page = 50
-selected_ids = set()  # Cambiado a set para una búsqueda más eficiente
+selected_ids = {}   # Cambiado a set para una búsqueda más eficiente
 export_button = None
 selected_items_window = None
+
+
+
+# Actualiza los items en la ventana flotante
+def update_selected_items_window():
+    global selected_items_window
+    
+    if selected_items_window is None or not selected_items_window.winfo_exists():
+        selected_items_window = tk.Toplevel(root)
+        selected_items_window.title("Lista para exportar")
+        selected_items_window.geometry("300x400")
+        
+        global selected_listbox
+        selected_listbox = tk.Listbox(selected_items_window, width=40, height=20)
+        selected_listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        
+        selected_listbox.bind('<Double-1>', remove_selected_item)
+        selected_listbox.bind('<ButtonRelease-1>', ask_for_amount)  # Nuevo evento
+    
+    selected_listbox.delete(0, tk.END)
+    for item_id, monto in selected_ids.items():
+        cursor.execute("SELECT Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
+        apellido, nombre = cursor.fetchone()
+        monto_str = f" - Monto: {monto}" if monto is not None else ""
+        selected_listbox.insert(tk.END, f"{item_id}: {apellido}, {nombre}{monto_str}")
+
+# Funcion para solicitar monto para cada ITEM seleccionado
+def ask_for_amount(event):
+    index = selected_listbox.nearest(event.y)
+    item = selected_listbox.get(index)
+    item_id = int(item.split(':')[0])
+    
+    current_amount = selected_ids.get(item_id, None)
+    
+    amount = simpledialog.askinteger("Ingresar Monto", 
+                                     f"Ingrese el monto para el empleado {item_id}:",
+                                     initialvalue=current_amount)
+    
+    if amount == 0:
+            selected_ids.pop(item_id)
+            update_selected_items_window()
+    elif amount is not None:
+        selected_ids[item_id] = amount
+        update_selected_items_window()
+    
+
 
 # PAGINADO
 # Función para obtener el número total de páginas
 def get_total_pages():
-    cursor.execute("SELECT COUNT(*) FROM Empleados")
+    cursor.execute("SELECT COUNT(*) FROM Usuarios")
     total_items = cursor.fetchone()[0]
     return math.ceil(total_items / items_per_page)
 
@@ -42,7 +91,7 @@ def go_to_last_page():
     load_data(total_pages - 1)
 
 def get_next_id():
-    cursor.execute("SELECT MAX(id) FROM Empleados")
+    cursor.execute("SELECT MAX(id) FROM Usuarios")
     max_id = cursor.fetchone()[0]
     return max_id + 1 if max_id else 1
 
@@ -55,13 +104,13 @@ def add_or_edit_item(item_id=None):
 
     # Obtener datos existentes si es una edición
     if item_id is not None:
-        cursor.execute("SELECT Apellido, Nombre, NroDoc, Cuit, Sucur FROM Empleados WHERE id=?", (item_id,))
+        cursor.execute("SELECT Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios WHERE id=?", (item_id,))
         existing_data = cursor.fetchone()
     else:
         existing_data = [""] * 5
 
     # Crear y colocar los campos del formulario
-    fields = ["Apellido", "Nombre", "NroDoc", "Cuit", "Sucur"]
+    fields = ["Apellido", "Nombre", "NroDoc", "Cuit", "Sucur", "NroCta"]
     entries = {}
 
     for i, field in enumerate(fields):
@@ -77,11 +126,11 @@ def add_or_edit_item(item_id=None):
         
         if item_id is None:
             new_id = get_next_id()
-            cursor.execute("INSERT INTO Empleados (id, Apellido, Nombre, NroDoc, Cuit, Sucur) VALUES (?, ?, ?, ?, ?, ?)",
+            cursor.execute("INSERT INTO Usuarios (id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta) VALUES (?, ?, ?, ?, ?, ?, ?)",
                            (new_id, *values))
             message = "Nuevo empleado agregado correctamente"
         else:
-            cursor.execute("UPDATE Empleados SET Apellido=?, Nombre=?, NroDoc=?, Cuit=?, Sucur=? WHERE id=?",
+            cursor.execute("UPDATE Usuarios SET Apellido=?, Nombre=?, NroDoc=?, Cuit=?, Sucur=?, NroCta=? WHERE id=?",
                            (*values, item_id))
             message = "Empleado actualizado correctamente"
         
@@ -92,7 +141,6 @@ def add_or_edit_item(item_id=None):
 
     # Botón para guardar
     tk.Button(form_window, text="Guardar", command=save_item).pack(pady=10)
-
 
 
 
@@ -110,13 +158,37 @@ def update_export_button():
     export_button.config(text=f"Descargar ({len(selected_ids)})")
 
 
+# Funcion para la busqueda desde inputbox
+def search_filter(*args):
+    search_text = search_var.get().strip()
+    if len(search_text) >= 3:
+        if search_text.isdigit():
+            query = "SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios WHERE Cuit LIKE ? ORDER BY Apellido, Nombre"
+            params = ('%' + search_text + '%',)
+        else:
+            query = "SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios WHERE Apellido LIKE ? OR Nombre LIKE ? ORDER BY Apellido, Nombre"
+            params = ('%' + search_text + '%', '%' + search_text + '%')
+        
+        cursor.execute(query, params)
+    else:
+        cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios ORDER BY Apellido, Nombre LIMIT ? OFFSET ?", (items_per_page, current_page * items_per_page))
+    
+    rows = cursor.fetchall()
+    tree.delete(*tree.get_children())
+    for row in rows:
+        tree.insert("", "end", values=row, tags=('selected',) if row[0] in selected_ids else ())
+    
+    update_export_button()
+
+
+
 # Función para recargar datos desde la db segun la painga
 def load_data(page):
     global current_page
     total_pages = get_total_pages()
     current_page = page
     offset = page * items_per_page
-    cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur FROM Empleados LIMIT ? OFFSET ?", (items_per_page, offset))
+    cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios LIMIT ? OFFSET ?", (items_per_page, offset))
     rows = cursor.fetchall()
     for row in tree.get_children():
         tree.delete(row)
@@ -129,33 +201,68 @@ def load_data(page):
 def update_data():
     for item in tree.get_children():
         values = tree.item(item, 'values')
-        cursor.execute("UPDATE Empleados SET Apellido=?, Nombre=?, NroDoc=?, Cuit=?, Sucur=? WHERE id=?", (values[1], values[2], values[3], values[4], values[5], values[0]))
+        cursor.execute("UPDATE Usuarios SET Apellido=?, Nombre=?, NroDoc=?, Cuit=?, Sucur=?, NroCta=? WHERE id=?", (values[1], values[2], values[3], values[4], values[5], values[0], values[6]))
     conn.commit()
     messagebox.showinfo("Actualización", "Datos actualizados correctamente")
 
-# Función para exportar datos seleccionados a CSV
-def export_to_csv():
-    with open('selected_data.csv', 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['id', 'Apellido', 'Nombre', 'NroDoc', 'Cuit', 'Sucur'])
-        for item_id in selected_ids:
-            cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur FROM Empleados WHERE id=?", (item_id,))
-            row = cursor.fetchone()
-            if row:
-                writer.writerow(row)
-    messagebox.showinfo("Exportación", "Datos exportados correctamente")
 
-# Función para manejar la selección de checkboxes - REVISAR NO SE MUESTRAN
+
+
 def on_select(event):
     selected_item = tree.focus()
-    item_id = tree.item(selected_item, 'values')[0]
+    item_id = int(tree.item(selected_item, 'values')[0])
     if item_id in selected_ids:
-        selected_ids.remove(item_id)
+        del selected_ids[item_id]
         tree.item(selected_item, tags=())
     else:
-        selected_ids.add(item_id)
+        selected_ids[item_id] = None
         tree.item(selected_item, tags=('selected',))
     update_export_button()
+    update_selected_items_window()
+
+# Modificar la función de exportación para incluir el monto
+def export_to_csvbase():
+    with open('selected_data.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['id', 'Apellido', 'Nombre', 'NroDoc', 'Cuit', 'Sucur', 'NroCta', 'Monto'])
+        for item_id, monto in selected_ids.items():
+            cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios WHERE id=?", (item_id,))
+            row = cursor.fetchone()
+            if row:
+                writer.writerow(list(row) + [monto])
+    messagebox.showinfo("Exportación", "Datos exportados correctamente")
+
+
+def limpiar_numeros(texto):
+    return re.sub(r'\D', '', str(texto))
+
+def export_to_csv():
+    today = datetime.now().strftime("%d/%m/%Y")
+    with open('selected_data.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Empresa', 'Convenio', 'Sistema', 'Sucursal', 'Cuenta', 'TipoOperacion', 'Importe', 'Fecha', 'Comprobante', 'Afinidad', 'Extracto'])
+        for item_id, monto in selected_ids.items():
+            cursor.execute("SELECT NroCta, Sucur, NroDoc, Sistema, Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
+            row = cursor.fetchone()
+            if row:
+                nro_ctaRaw, sucur, nro_docRaw, sistema, apellido, nombre = row
+                nro_cta= limpiar_numeros(nro_ctaRaw)
+                nro_doc= limpiar_numeros(nro_docRaw)
+                writer.writerow([
+                    '2894',  # Empresa (fijo)
+                    '4',     # Convenio (fijo)
+                    sistema,     # Sistema (asumiendo que es el mismo que Convenio)
+                    sucur,   # Sucursal
+                    nro_cta, # Cuenta
+                    '2',     # TipoOperacion (fijo)
+                    monto,   # Importe
+                    today,   # Fecha de hoy
+                    nro_doc, # Comprobante (NroDoc)
+                    '9999',  # Afinidad (fijo)
+                    f"{apellido}, {nombre}"  # Extracto (Apellido, Nombre concatenados)
+                ])
+    messagebox.showinfo("Exportación", "Datos exportados correctamente")
+
 
 # Funcion para activar la seleccion de item con la barraespaciadora
 def on_space(event):
@@ -163,27 +270,6 @@ def on_space(event):
     if selected_item:
         on_select(None)
 
-
-# Funciones para la VENTANA FLOTANTE - mostrar elementos seleccionados
-def update_selected_items_window():
-    global selected_items_window
-    
-    if selected_items_window is None or not selected_items_window.winfo_exists():
-        selected_items_window = tk.Toplevel(root)
-        selected_items_window.title("Elementos seleccionados")
-        selected_items_window.geometry("300x400")
-        
-        global selected_listbox
-        selected_listbox = tk.Listbox(selected_items_window, width=40, height=20)
-        selected_listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
-        
-        selected_listbox.bind('<Double-1>', remove_selected_item)
-    
-    selected_listbox.delete(0, tk.END)
-    for item_id in selected_ids:
-        cursor.execute("SELECT Apellido, Nombre FROM Empleados WHERE id=?", (item_id,))
-        apellido, nombre = cursor.fetchone()
-        selected_listbox.insert(tk.END, f"{item_id}: {apellido}, {nombre}")
 
 def remove_selected_item(event):
     global selected_ids
@@ -199,21 +285,6 @@ def remove_selected_item(event):
         if tree.item(tree_item, 'values')[0] == str(item_id):
             tree.item(tree_item, tags=())
             break
-
-def on_select(event):
-    selected_item = tree.focus()
-    item_id = int(tree.item(selected_item, 'values')[0])
-    if item_id in selected_ids:
-        selected_ids.remove(item_id)
-        tree.item(selected_item, tags=())
-    else:
-        selected_ids.add(item_id)
-        tree.item(selected_item, tags=('selected',))
-    update_export_button()
-    update_selected_items_window()
-
-
-
 
 
 
@@ -232,7 +303,7 @@ def clear_selections():
 
 
 # Crear el Treeview
-columns = ("id", "Apellido", "Nombre", "NroDoc", "Cuit", "Sucur")
+columns = ("id", "Apellido", "Nombre", "NroDoc", "Cuit", "Sucur", "NroCta")
 tree = ttk.Treeview(root, columns=columns, show='headings')
 for col in columns:
     tree.heading(col, text=col)
@@ -254,6 +325,12 @@ tree.bind('<ButtonRelease-1>', on_select)
 # Botones de navegación y acciones
 frame = tk.Frame(root)
 frame.pack()
+
+# Cuadro de búsqueda
+search_var = StringVar()
+search_var.trace_add("write", lambda *args: search_filter())
+search_entry = ttk.Entry(frame, textvariable=search_var, width=30)
+search_entry.pack(side=tk.LEFT, padx=(10, 5))
 
 add_button = tk.Button(frame, text="Agregar+", command=add_new_item)
 add_button.pack(side=tk.LEFT, padx=10)
