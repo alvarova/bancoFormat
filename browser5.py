@@ -237,21 +237,32 @@ def limpiar_numeros(texto):
     return re.sub(r'\D', '', str(texto))
 
 def export_to_csv():
+    if not selected_ids:
+        messagebox.showwarning("Advertencia", "Necesita seleccionar elementos de la lista para exportar.")
+        return
+
     today = datetime.now().strftime("%d/%m/%Y")
+    elementos_exportados = 0
+    elementos_no_exportados = 0
+
     with open('selected_data.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['Empresa', 'Convenio', 'Sistema', 'Sucursal', 'Cuenta', 'TipoOperacion', 'Importe', 'Fecha', 'Comprobante', 'Afinidad', 'Extracto'])
         for item_id, monto in selected_ids.items():
+            if monto is None or monto == 0:
+                elementos_no_exportados += 1
+                continue
+
             cursor.execute("SELECT NroCta, Sucur, NroDoc, Sistema, Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
             row = cursor.fetchone()
             if row:
                 nro_ctaRaw, sucur, nro_docRaw, sistema, apellido, nombre = row
-                nro_cta= limpiar_numeros(nro_ctaRaw)
-                nro_doc= limpiar_numeros(nro_docRaw)
+                nro_cta = limpiar_numeros(nro_ctaRaw)
+                nro_doc = limpiar_numeros(nro_docRaw)
                 writer.writerow([
                     '2894',  # Empresa (fijo)
                     '4',     # Convenio (fijo)
-                    sistema,     # Sistema (asumiendo que es el mismo que Convenio)
+                    sistema, # Sistema (asumiendo que es el mismo que Convenio)
                     sucur,   # Sucursal
                     nro_cta, # Cuenta
                     '2',     # TipoOperacion (fijo)
@@ -261,7 +272,15 @@ def export_to_csv():
                     '9999',  # Afinidad (fijo)
                     f"{apellido}, {nombre}"  # Extracto (Apellido, Nombre concatenados)
                 ])
-    messagebox.showinfo("Exportación", "Datos exportados correctamente")
+                elementos_exportados += 1
+
+    if elementos_exportados > 0:
+        mensaje = f"Se exportaron {elementos_exportados} elementos correctamente."
+        if elementos_no_exportados > 0:
+            mensaje += f"\nNo se exportaron {elementos_no_exportados} elementos por no tener monto definido."
+        messagebox.showinfo("Exportación", mensaje)
+    else:
+        messagebox.showwarning("Advertencia", "No se exportó ningún elemento. Todos los elementos seleccionados tenían monto 0 o no definido.")
 
 
 # Funcion para activar la seleccion de item con la barraespaciadora
