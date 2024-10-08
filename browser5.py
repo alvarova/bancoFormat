@@ -242,17 +242,20 @@ def export_to_csv():
         return
 
     today = datetime.now().strftime("%d/%m/%Y")
+    hoy = datetime.now().strftime("%Y%m%d")
     elementos_exportados = 0
     elementos_no_exportados = 0
-
-    with open('selected_data.csv', 'w', newline='') as csvfile:
+    montoTotal = 0
+    nombre_archivo = hoy+'_salida_habilitaciones.txt'
+    with open(nombre_archivo, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['Empresa', 'Convenio', 'Sistema', 'Sucursal', 'Cuenta', 'TipoOperacion', 'Importe', 'Fecha', 'Comprobante', 'Afinidad', 'Extracto'])
+        #writer.writerow(['Empresa', 'Convenio', 'Sistema', 'Sucursal', 'Cuenta', 'TipoOperacion', 'Importe', 'Fecha', 'Comprobante', 'Afinidad', 'Extracto'])
         for item_id, monto in selected_ids.items():
             if monto is None or monto == 0:
                 elementos_no_exportados += 1
                 continue
-
+            else:
+                montoTotal+=monto
             cursor.execute("SELECT NroCta, Sucur, NroDoc, Sistema, Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
             row = cursor.fetchone()
             if row:
@@ -273,6 +276,143 @@ def export_to_csv():
                     f"{apellido}, {nombre}"  # Extracto (Apellido, Nombre concatenados)
                 ])
                 elementos_exportados += 1
+        cabecera = generar_cabecera('2894','4',today,montoTotal)
+    if elementos_exportados > 0:
+        with open(nombre_archivo, 'r') as archivo:
+            contenido_actual = archivo.read()
+        # Escribe la nueva cabecera seguida del contenido original
+        with open(nombre_archivo, 'w') as archivo:
+            archivo.write(cabecera + contenido_actual)
+        mensaje = f"Se exportaron {elementos_exportados} elementos correctamente."
+        if elementos_no_exportados > 0:
+            mensaje += f"\nNo se exportaron {elementos_no_exportados} elementos por no tener monto definido."
+        messagebox.showinfo("Exportación", mensaje)
+    else:
+        messagebox.showwarning("Advertencia", "No se exportó ningún elemento. Todos los elementos seleccionados tenían monto 0 o no definido.")
+
+def getTotal():
+    montoTotal = 0
+    for monto in selected_ids.items():
+        montoTotal+= monto
+    return montoTotal
+
+def export_to_txt():
+    if not selected_ids:
+        messagebox.showwarning("Advertencia", "Necesita seleccionar elementos de la lista para exportar.")
+        return
+    #Definimos las constantes 
+    today = datetime.now()
+    año = today.strftime("%Y").rjust(4, '0')   # Año en 4 caracteres
+    mes = today.strftime("%m").rjust(2, '0')    # Mes en 2 caracteres
+    dia = today.strftime("%d").rjust(2, '0')    # Día en 2 caracteres
+    nombre_archivo = f"{today.strftime('%d%m%Y')}_salida.txt"
+    
+    empresa = '2894'.rjust(4, '0')  # 4 caracteres, valor fijo
+    codigo_control = '00'.rjust(2, '0')  # 2 caracteres, valor fijo
+    tipo_registro = '02'.rjust(2, '0')  # 2 caracteres, valor fijo
+    cierre = '9999'.rjust(4, '0')  # 4 caracteres, valor fijo
+    control_adicional = '00000000'.rjust(8, '0')  # 8 caracteres, valor fijo
+    id_adicional = '00000'.rjust(5, '0')  # 5 caracteres, valor fijo
+    #montoTotal = getTotal()
+
+    with open(nombre_archivo, 'w', newline='') as file:
+        # Agregar cabecera al principio del archivo
+        #file.seek(0)
+        cabecera = generar_cabecera('2894', '0004', today.strftime('%d%m%Y'), 
+                                    f"{sum(int(monto * 1000) for monto in selected_ids.values() if monto)}")
+        file.write(cabecera)        
+        for item_id, monto in selected_ids.items():
+            if monto is None or monto == 0:
+                continue
+            print(monto)
+            cursor.execute("SELECT NroCta, Sucur, NroDoc, Sistema, Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
+            row = cursor.fetchone()
+            if row:
+                nro_cta_raw, sucur, nro_doc_raw, sistema, apellido, nombre = row
+                
+                # Limpiar y formatear los datos
+                sucursal = str(sucur).rjust(2, '0')  # Asegurar 2 caracteres
+                nro_cta = str(sistema).rjust(4, '0')  # Asegurar 4 caracteres
+                nro_cta_detallado = limpiar_numeros(nro_cta_raw).rjust(12, '0')  # Asegurar 12 caracteres
+                importe = int(monto * 1000)  # Asumiendo que el monto está en milésimas
+                importe_str = f"{importe:014d}"  # Asegurar 14 caracteres
+                nro_doc = limpiar_numeros(nro_doc_raw).rjust(10, '0')  # Asegurar 10 caracteres
+                extracto = limpiar_texto(f"{apellido}, {nombre}").ljust(30, ' ')[:30]  # Asegurar 30 caracteres
+
+                # Combinar todos los campos en una línea respetando la estructura
+                linea = (f"{empresa}{sucursal}{nro_cta}{nro_cta_detallado}{tipo_registro}"
+                         f"{importe_str}{año}{mes}{dia}{codigo_control}{nro_doc}{sucursal}{cierre}"
+                         f"{extracto}{control_adicional}{id_adicional}\n")
+                file.write(linea)
+                print(linea)
+
+
+    messagebox.showinfo("Exportación", f"Datos exportados correctamente a {nombre_archivo}.")
+
+
+
+def limpiar_texto(texto):
+    # Eliminar caracteres que no sean letras, espacios, comas o puntos
+    texto_limpio = re.sub(r'[^a-zA-ZáéíóúÁÉÍÓÚñÑ ,.]', '', texto)
+    return texto_limpio
+
+def generar_cabecera(empresa, convenio, fecha_envio, importe_total):
+    cabecera = f"9998{empresa}{convenio}{fecha_envio[0:4]}{fecha_envio[4:6]}{fecha_envio[6:8]}000001{importe_total}"
+    cabecera += " " * 79 + "\n"
+    #cabecera += " " * 79 + "\r\n"
+    return cabecera
+
+def export_to_fixed_width():
+    if not selected_ids:
+        messagebox.showwarning("Advertencia", "Necesita seleccionar elementos de la lista para exportar.")
+        return
+
+    today = datetime.now().strftime("%d%m%Y")
+    elementos_exportados = 0
+    elementos_no_exportados = 0
+    importe_total = 0
+
+    with open('selected_data.txt', 'w', newline='') as file:
+        # Primero, escribimos un placeholder para la cabecera
+        file.write(" " * 120 + "\n")  # 120 caracteres de espacio + salto de línea
+        
+        for item_id, monto in selected_ids.items():
+            if monto is None or monto == 0:
+                elementos_no_exportados += 1
+                continue
+
+            cursor.execute("SELECT NroCta, Sucur, NroDoc, Sistema, Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
+            row = cursor.fetchone()
+            if row:
+                nro_ctaRaw, sucur, nro_docRaw, sistema, apellido, nombre = row
+                nro_cta = limpiar_numeros(nro_ctaRaw)
+                nro_doc = limpiar_numeros(nro_docRaw)
+                
+                # Formatear cada campo según las especificaciones
+                empresa = '2894'.rjust(4)
+                convenio = '0004'.rjust(4)
+                sistema = str(sistema).rjust(4)[:4]
+                sucursal = str(sucur).rjust(4)[:4]
+                cuenta = nro_cta.rjust(12)[:12]
+                tipo_operacion = '0002'.rjust(4)
+                importe = int(monto * 100)
+                importe_str = f"{importe:012d}"
+                fecha = today
+                comprobante = nro_doc.rjust(12)[:12]
+                afinidad = '9999'.rjust(4)
+                extracto_limpio = limpiar_texto(f"{apellido}, {nombre}")
+                extracto = extracto_limpio.ljust(30)[:30]
+
+                # Combinar todos los campos en una línea
+                linea = f"{empresa}{convenio}{sistema}{sucursal}{cuenta}{tipo_operacion}{importe_str}{fecha}{comprobante}{afinidad}{extracto}\n"
+                file.write(linea)
+                elementos_exportados += 1
+                importe_total += importe
+
+        # Volver al inicio del archivo y escribir la cabecera
+        file.seek(0)
+        cabecera = generar_cabecera('2894', '0004', today, f"{importe_total:015d}")
+        file.write(cabecera)
 
     if elementos_exportados > 0:
         mensaje = f"Se exportaron {elementos_exportados} elementos correctamente."
@@ -281,7 +421,6 @@ def export_to_csv():
         messagebox.showinfo("Exportación", mensaje)
     else:
         messagebox.showwarning("Advertencia", "No se exportó ningún elemento. Todos los elementos seleccionados tenían monto 0 o no definido.")
-
 
 # Funcion para activar la seleccion de item con la barraespaciadora
 def on_space(event):
@@ -372,7 +511,7 @@ last_button.pack(side='left')
 update_button = tk.Button(frame, text="Actualizar", command=update_data)
 update_button.pack(side='left')
 
-export_button = tk.Button(frame, text="Descargar", command=export_to_csv)
+export_button = tk.Button(frame, text="Descargar", command=export_to_txt)
 export_button.pack(side='left')
 
 clear_button = tk.Button(frame, text="Limpiar", command=clear_selections)
@@ -385,7 +524,7 @@ menubar = Menu(root)
 filemenu = Menu(menubar, tearoff=0)
 filemenu.add_command(label="Agregar Usuario", command=add_or_edit_item)
 filemenu.add_command(label="Actualizar Lista", command=update_data)
-filemenu.add_command(label="Descargar", command=export_to_csv)
+filemenu.add_command(label="Descargar", command=export_to_fixed_width)
 filemenu.add_command(label="Limpiar", command=clear_selections)
 filemenu.add_separator()
 filemenu.add_command(label="Salir", command=root.quit)
