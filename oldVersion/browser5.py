@@ -342,7 +342,7 @@ def export_to_txt():
                 # Combinar todos los campos en una línea respetando la estructura
                 linea = (f"{empresa}{sucursal}{nro_cta}{nro_cta_detallado}{tipo_registro}"
                          f"{importe_str}{año}{mes}{dia}{codigo_control}{nro_doc}{sucursal}{cierre}"
-                         f"{extracto}{control_adicional}{id_adicional}\n")
+                         f"{extracto}{control_adicional}{id_adicional}\r\n")
                 file.write(linea)
                 print(linea)
 
@@ -374,7 +374,7 @@ def export_to_fixed_width():
 
     with open('selected_data.txt', 'w', newline='') as file:
         # Primero, escribimos un placeholder para la cabecera
-        file.write(" " * 120 + "\n")  # 120 caracteres de espacio + salto de línea
+        file.write(" " * 120 + "\r\n")  # 120 caracteres de espacio + salto de línea
         
         for item_id, monto in selected_ids.items():
             if monto is None or monto == 0:
@@ -391,8 +391,8 @@ def export_to_fixed_width():
                 # Formatear cada campo según las especificaciones
                 empresa = '2894'.rjust(4)
                 convenio = '0004'.rjust(4)
-                sistema = str(sistema).rjust(4)[:4]
-                sucursal = str(sucur).rjust(4)[:4]
+                sistema = str(sistema)[-2:].zfill(2)
+                sucursal = str(sucur).rjust(4)[:4].zfill(4)
                 cuenta = nro_cta.rjust(12)[:12]
                 tipo_operacion = '0002'.rjust(4)
                 importe = int(monto * 100)
@@ -412,7 +412,8 @@ def export_to_fixed_width():
         # Volver al inicio del archivo y escribir la cabecera
         file.seek(0)
         cabecera = generar_cabecera('2894', '0004', today, f"{importe_total:015d}")
-        file.write(cabecera)
+        cabeceraFmt=cabecera+"\r\n"
+        file.write(cabeceraFmt)
 
     if elementos_exportados > 0:
         mensaje = f"Se exportaron {elementos_exportados} elementos correctamente."
