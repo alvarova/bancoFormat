@@ -23,7 +23,7 @@ def init_global_vars():
 # Crear la ventana principal
 root = tk.Tk()
 root.title("BancoFormat")
-root.geometry("940x580")
+root.geometry("940x580+10+10")
 init_global_vars()
 
 
@@ -44,26 +44,56 @@ convenio_var = None
 
 # Actualiza los items en la ventana flotante
 def update_selected_items_window():
-    global selected_items_window
+    global selected_items_window, subtotal_label
     
     if selected_items_window is None or not selected_items_window.winfo_exists():
         selected_items_window = tk.Toplevel(root)
         selected_items_window.title("Lista para exportar")
         selected_items_window.geometry("300x400")
         
-        global selected_listbox
-        selected_listbox = tk.Listbox(selected_items_window, width=40, height=20)
-        selected_listbox.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        # Crear frame principal para organizar elementos
+        main_frame = tk.Frame(selected_items_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        selected_listbox.bind('<Double-1>', remove_selected_item)
-        selected_listbox.bind('<ButtonRelease-1>', ask_for_amount)  # Nuevo evento
+        # Crear el Listbox en el frame principal
+        global selected_listbox
+        selected_listbox = tk.Listbox(main_frame, width=40, height=20)
+        selected_listbox.pack(fill=tk.BOTH, expand=True)
+        
+        # Crear frame para el subtotal en la parte inferior
+        subtotal_frame = tk.Frame(main_frame)
+        subtotal_frame.pack(fill=tk.X, pady=(5,0))
+        
+        # Label para el texto "Subtotal:"
+        tk.Label(subtotal_frame, text="Subtotal:", font=('Arial', 10, 'bold')).pack(side=tk.LEFT)
+        
+        # Label para el valor del subtotal, alineado a la derecha
+        subtotal_label = tk.Label(subtotal_frame, text="0", 
+                                font=('Arial', 10, 'bold'),
+                                anchor='e')
+        subtotal_label.pack(side=tk.RIGHT)
+        
+        # Vincular eventos
+        selected_listbox.bind('<Button-1>', ask_for_amount)
+        selected_listbox.bind('<Double-Button-1>', remove_selected_item)
     
+    # Actualizar lista
     selected_listbox.delete(0, tk.END)
+    
+    # Calcular subtotal mientras se actualiza la lista
+    subtotal = 0
     for item_id, monto in selected_ids.items():
         cursor.execute("SELECT Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
         apellido, nombre = cursor.fetchone()
         monto_str = f" - Monto: {monto}" if monto is not None else ""
         selected_listbox.insert(tk.END, f"{item_id}: {apellido}, {nombre}{monto_str}")
+        
+        # Sumar al subtotal si hay monto
+        if monto is not None:
+            subtotal += monto
+    
+    # Actualizar el label del subtotal con formato de moneda
+    subtotal_label.config(text=f"$ {subtotal:,.2f}")
 
 # Funcion para solicitar monto para cada ITEM seleccionado
 def ask_for_amount(event):
@@ -119,7 +149,7 @@ def add_or_edit_item(item_id=None):
         cursor.execute("SELECT Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios WHERE id=?", (item_id,))
         existing_data = cursor.fetchone()
     else:
-        existing_data = [""] * 5
+        existing_data = [""] * 6
 
     # Crear y colocar los campos del formulario
     fields = ["Apellido", "Nombre", "NroDoc", "Cuit", "Sucur", "NroCta"]
@@ -223,12 +253,25 @@ def update_data():
 def on_select(event):
     selected_item = tree.focus()
     item_id = int(tree.item(selected_item, 'values')[0])
+    
     if item_id in selected_ids:
+        # Si ya está seleccionado, lo quitamos
         del selected_ids[item_id]
         tree.item(selected_item, tags=())
     else:
-        selected_ids[item_id] = None
-        tree.item(selected_item, tags=('selected',))
+        # Si no está seleccionado, pedimos el monto y lo agregamos
+        amount = simpledialog.askinteger("Ingresar Monto", 
+                                       f"Ingrese el monto para el empleado {item_id}:",
+                                       initialvalue=None)
+        
+        if amount == 0:
+            # Si el monto es 0, no lo agregamos
+            return
+        elif amount is not None:
+            # Si se ingresó un monto válido, lo agregamos
+            selected_ids[item_id] = amount
+            tree.item(selected_item, tags=('selected',))
+    
     update_export_button()
     update_selected_items_window()
 
@@ -365,20 +408,29 @@ def on_space(event):
 
 def remove_selected_item(event):
     global selected_ids
-    index = selected_listbox.curselection()[0]
-    item = selected_listbox.get(index)
-    item_id = int(item.split(':')[0])
-    
-    selected_ids.remove(item_id)
-    update_selected_items_window()
-    update_export_button()
-    
-    for tree_item in tree.get_children():
-        if tree.item(tree_item, 'values')[0] == str(item_id):
-            tree.item(tree_item, tags=())
-            break
-
-
+    try:
+        index = selected_listbox.curselection()[0]
+        item = selected_listbox.get(index)
+        item_id = int(item.split(':')[0])
+        
+        # Eliminar del diccionario selected_ids
+        if item_id in selected_ids:
+            del selected_ids[item_id]  # Cambiar selected_ids.remove(item_id) por del selected_ids[item_id]
+        
+        # Actualizar la visualización
+        update_selected_items_window()
+        update_export_button()
+        
+        # Actualizar el tag en el treeview principal
+        for tree_item in tree.get_children():
+            if tree.item(tree_item, 'values')[0] == str(item_id):
+                tree.item(tree_item, tags=())
+                break
+    except IndexError:
+        # No hay elemento seleccionado
+        pass
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al eliminar el elemento: {str(e)}")
 
 
 # Funcion para limpiar todos los elementos del listado
