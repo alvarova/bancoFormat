@@ -154,6 +154,48 @@ def get_next_id():
     max_id = cursor.fetchone()[0]
     return max_id + 1 if max_id else 1
 
+# Funcion para mostrar elemento seleccionado de la DB
+def show_item_details(item_id):
+    """
+    Muestra una ventana con todos los detalles del usuario seleccionado
+    """
+    try:
+        # Obtener datos del usuario
+        cursor.execute("SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta FROM Usuarios WHERE id=?", (item_id,))
+        data = cursor.fetchone()
+        
+        if data:
+            # Crear ventana de detalles
+            details_window = tk.Toplevel(root)
+            details_window.title("Detalles del Usuario")
+            details_window.geometry("300x250")
+            
+            # Frame principal
+            main_frame = tk.Frame(details_window, padx=20, pady=10)
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Campos a mostrar
+            fields = ["ID", "Apellido", "Nombre", "Nro. Doc", "CUIT", "Sucursal", "Nro. Cuenta"]
+            
+            # Mostrar cada campo con su valor
+            for field, value in zip(fields, data):
+                frame = tk.Frame(main_frame)
+                frame.pack(fill=tk.X, pady=2)
+                
+                tk.Label(frame, text=f"{field}:", width=12, anchor='w').pack(side=tk.LEFT)
+                tk.Label(frame, text=str(value), anchor='w').pack(side=tk.LEFT, fill=tk.X)
+            
+            # Botón Aceptar
+            tk.Button(main_frame, text="Aceptar", 
+                     command=details_window.destroy).pack(pady=(15,0))
+            
+            # Hacer la ventana modal
+            details_window.transient(root)
+            details_window.grab_set()
+            root.wait_window(details_window)
+            
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al mostrar detalles: {str(e)}")
 
 # Funcion para eliminar elemento seleccionado de la DB
 def delete_item(item_id):
@@ -688,6 +730,9 @@ def show_context_menu(event):
             
             # Crear y mostrar el menú contextual
             context_menu = tk.Menu(root, tearoff=0)
+            context_menu.add_command(label="Visualizar", 
+                                   command=lambda: show_item_details(item_id))
+            context_menu.add_separator()
             context_menu.add_command(label="Editar", 
                                    command=lambda: edit_item(None))
             context_menu.add_separator()
@@ -717,7 +762,7 @@ style.configure("Treeview", rowheight=25)
 style.map("Treeview", background=[('selected', 'gray')])
 
 # Vincular eventos
-tree.bind('<ButtonRelease-1>', on_select)
+tree.bind('<Double-1>', on_select)
 tree.bind('<space>', on_space)
 #tree.unbind('<Double-1>', edit_item)  # Doble clic para editar
 tree.bind('<Button-3>', show_context_menu)
