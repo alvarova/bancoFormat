@@ -9,12 +9,13 @@ To run first time you need:
 ### Ubuntu:
 
 Install PIP3
-sudo apt-get install python3-pip
+> sudo apt-get install python3-pip
 
 Install TKInter
-sudo apt-get install python3-tk 
-Fedora
-sudo dnf install python3-tkinter
+> sudo apt-get install python3-tk 
+
+### Fedora
+> sudo dnf install python3-tkinter
 
 ## Running
 
