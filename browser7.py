@@ -5,6 +5,7 @@ from tkinter import simpledialog
 from tkinter import StringVar
 from tkinter import *
 import csv
+import os
 import math, re
 from datetime import datetime
 
@@ -51,6 +52,106 @@ def convert_amount_string(amount_str):
     except (ValueError, AttributeError):
         return None
 
+def save_list():
+    """
+    Guarda los identificadores de la lista actual en un archivo .lst
+    """
+    try:
+        if not selected_ids:
+            messagebox.showwarning("Advertencia", "No hay elementos seleccionados para guardar.")
+            return
+            
+        # Solicitar nombre de la lista
+        list_name = simpledialog.askstring("Guardar Lista", 
+                                         "Ingrese un nombre para la lista:",
+                                         initialvalue="")
+        
+        if list_name:
+            # Asegurar que tenga extensión .lst
+            if not list_name.endswith('.lst'):
+                list_name += '.lst'
+            
+            # Guardar solo los IDs en el archivo
+            with open(list_name, 'w') as f:
+                for item_id in selected_ids.keys():
+                    f.write(f"{item_id}\n")
+            
+            messagebox.showinfo("Éxito", f"Lista guardada como '{list_name}'")
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al guardar la lista: {str(e)}")
+
+def load_list():
+    """
+    Carga una lista de identificadores desde un archivo .lst
+    """
+    try:
+        # Obtener lista de archivos .lst en el directorio actual
+        lst_files = [f for f in os.listdir('.') if f.endswith('.lst')]
+        
+        if not lst_files:
+            messagebox.showinfo("Información", "No hay archivos de lista disponibles.")
+            return
+        
+        # Crear ventana de selección
+        select_window = tk.Toplevel(root)
+        select_window.title("Seleccionar Lista")
+        select_window.geometry("300x400")
+        
+        # Listbox para mostrar archivos
+        list_box = tk.Listbox(select_window)
+        list_box.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Llenar listbox con archivos disponibles
+        for file in lst_files:
+            list_box.insert(tk.END, file)
+        
+        def load_selected():
+            try:
+                selection = list_box.get(list_box.curselection())
+                if selection:
+                    # Limpiar selección actual
+                    selected_ids.clear()
+                    
+                    # Leer IDs del archivo
+                    with open(selection, 'r') as f:
+                        for line in f:
+                            item_id = int(line.strip())
+                            # Obtener datos de la base de datos
+                            cursor.execute("""
+                                SELECT id, Apellido, Nombre, NroDoc, Cuit, Sucur, NroCta 
+                                FROM Usuarios WHERE id=?""", (item_id,))
+                            data = cursor.fetchone()
+                            if data:
+                                selected_ids[item_id] = 0  # Inicializar monto en 0
+                    
+                    # Actualizar interfaz
+                    update_selected_items_window()
+                    update_export_button()
+                    
+                    # Actualizar tags en el treeview principal
+                    for item in tree.get_children():
+                        item_id = int(tree.item(item, 'values')[0])
+                        if item_id in selected_ids:
+                            tree.item(item, tags=('selected',))
+                        else:
+                            tree.item(item, tags=())
+                    
+                    select_window.destroy()
+                    messagebox.showinfo("Éxito", "Lista cargada correctamente")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error al cargar la lista: {str(e)}")
+        
+        # Botón para cargar la lista seleccionada
+        tk.Button(select_window, text="Cargar", 
+                 command=load_selected).pack(pady=10)
+        
+        # Hacer la ventana modal
+        select_window.transient(root)
+        select_window.grab_set()
+        root.wait_window(select_window)
+        
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al cargar la lista: {str(e)}")
 
 # Actualiza los items en la ventana flotante
 def update_selected_items_window():
@@ -64,7 +165,21 @@ def update_selected_items_window():
         # Crear frame principal para organizar elementos
         main_frame = tk.Frame(selected_items_window)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+
+ # Frame para los botones en la parte superior
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(0,10))
         
+        # Botón Cargar
+        tk.Button(button_frame, text="Cargar", 
+                 command=load_list).pack(side=tk.LEFT, padx=5)
+        
+        # Botón Guardar
+        tk.Button(button_frame, text="Guardar", 
+                 command=save_list).pack(side=tk.LEFT, padx=5)
+        
+
         # Crear el Listbox en el frame principal
         global selected_listbox
         selected_listbox = tk.Listbox(main_frame, width=40, height=20)
@@ -718,6 +833,17 @@ def valida_digito(suc, cta):
         print ("Valida:"+vale)
         return vdigito == idig  
 
+# En la sección donde se crean los botones de la ventana principal
+def show_selected_items_window():
+    update_selected_items_window()
+    if selected_items_window:
+        # Obtener la posición y dimensiones de la ventana principal
+        root_x = root.winfo_x()
+        root_y = root.winfo_y()
+        root_width = root.winfo_width()
+        
+        # Posicionar la ventana flotante a la derecha de la ventana principal
+        selected_items_window.geometry(f"+{root_x + root_width + 5}+{root_y}")
 
 def show_context_menu(event):
     try:
@@ -816,6 +942,10 @@ last_button.pack(side='left')
 
 update_button = tk.Button(frame, text="Actualizar", command=update_data)
 update_button.pack(side='left')
+
+# Agregar el botón en el frame de botones existente (ajusta según tu layout actual)
+show_list_button = tk.Button(frame, text="Mostrar", command=show_selected_items_window)
+show_list_button.pack(side=tk.LEFT, padx=5)
 
 export_button = tk.Button(frame, text="Descargar", command=export_to_fixed_width)
 export_button.pack(side='left')
