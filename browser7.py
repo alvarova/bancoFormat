@@ -154,6 +154,32 @@ def get_next_id():
     max_id = cursor.fetchone()[0]
     return max_id + 1 if max_id else 1
 
+
+# Funcion para eliminar elemento seleccionado de la DB
+def delete_item(item_id):
+    """
+    Elimina un usuario de la base de datos
+    """
+    try:
+        # Confirmar antes de eliminar
+        if messagebox.askyesno("Confirmar eliminación", 
+                             "¿Está seguro que desea eliminar este usuario?"):
+            # Eliminar de la base de datos
+            cursor.execute("DELETE FROM Usuarios WHERE id=?", (item_id,))
+            conn.commit()
+            
+            # Si el item estaba en la lista de seleccionados, eliminarlo
+            if int(item_id) in selected_ids:
+                del selected_ids[int(item_id)]
+                update_selected_items_window()
+                update_export_button()
+            
+            # Recargar los datos
+            load_data(current_page)
+            messagebox.showinfo("Éxito", "Usuario eliminado correctamente")
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al eliminar el usuario: {str(e)}")
+
 # Funcion para agregar elementos vinculado al boton AGREGAR
 def add_or_edit_item(item_id=None):
     # Crear una nueva ventana para el formulario
@@ -209,9 +235,14 @@ def add_new_item():
 
 
 def edit_item(event):
-    item = tree.selection()[0]
-    item_id = tree.item(item, "values")[0]
-    add_or_edit_item(item_id)
+    try:
+        selected_item = tree.selection()[0]  # Obtener el item seleccionado
+        item_id = tree.item(selected_item, "values")[0]  # Obtener el ID
+        add_or_edit_item(item_id)  # Llamar a la función de edición
+    except IndexError:
+        messagebox.showwarning("Advertencia", "Por favor, seleccione un elemento para editar.")
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al editar el elemento: {str(e)}")
 
 def update_export_button():
     export_button.config(text=f"Descargar ({len(selected_ids)})")
@@ -258,11 +289,23 @@ def load_data(page):
 
 # Función para actualizar datos
 def update_data():
-    for item in tree.get_children():
-        values = tree.item(item, 'values')
-        cursor.execute("UPDATE Usuarios SET Apellido=?, Nombre=?, NroDoc=?, Cuit=?, Sucur=?, NroCta=? WHERE id=?", (values[1], values[2], values[3], values[4], values[5], values[0], values[6]))
-    conn.commit()
-    messagebox.showinfo("Actualización", "Datos actualizados correctamente")
+    """
+    Recarga los datos de la base de datos y actualiza la vista
+    """
+    try:
+        # Guardar el ítem seleccionado actual
+        selected = tree.selection()
+        
+        # Recargar datos de la página actual
+        load_data(current_page)
+        
+        # Restaurar la selección si existía
+        if selected:
+            tree.selection_set(selected)
+            
+        messagebox.showinfo("Actualización", "Datos actualizados correctamente")
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al actualizar los datos: {str(e)}")
 
 
 
@@ -634,6 +677,27 @@ def valida_digito(suc, cta):
         return vdigito == idig  
 
 
+def show_context_menu(event):
+    try:
+        # Seleccionar el ítem bajo el cursor
+        item = tree.identify_row(event.y)
+        if item:
+            tree.selection_set(item)
+            item_values = tree.item(item, "values")
+            item_id = item_values[0]
+            
+            # Crear y mostrar el menú contextual
+            context_menu = tk.Menu(root, tearoff=0)
+            context_menu.add_command(label="Editar", 
+                                   command=lambda: edit_item(None))
+            context_menu.add_separator()
+            context_menu.add_command(label="Eliminar", 
+                                   command=lambda: delete_item(item_id))
+            
+            # Mostrar el menú en la posición del clic
+            context_menu.post(event.x_root, event.y_root)
+    except Exception as e:
+        messagebox.showerror("Error", f"Error al mostrar menú: {str(e)}")
 
 # *********************************
 # Definicion de UI e interaccion 
@@ -655,10 +719,8 @@ style.map("Treeview", background=[('selected', 'gray')])
 # Vincular eventos
 tree.bind('<ButtonRelease-1>', on_select)
 tree.bind('<space>', on_space)
-tree.bind('<Double-1>', edit_item)  # Doble clic para editar
-
-# Añadir checkboxes
-tree.bind('<ButtonRelease-1>', on_select)
+#tree.unbind('<Double-1>', edit_item)  # Doble clic para editar
+tree.bind('<Button-3>', show_context_menu)
 
 
 
