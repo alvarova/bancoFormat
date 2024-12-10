@@ -4,6 +4,8 @@ This run under Linux, Debian flavors, with Python 3 and TKInter as GUI
 
 To run first time you need:
 
+## Requeriments
+
 ### Ubuntu:
 
 Install PIP3
