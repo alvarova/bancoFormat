@@ -18,4 +18,6 @@ sudo dnf install python3-tkinter
 
 ## Running
 
-In terminal, you must run with python3 browser7.py
+In terminal, you must run with 
+
+> python3 browser7.py
