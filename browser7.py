@@ -39,7 +39,17 @@ selected_items_window = None
 empresa_var = None
 convenio_var = None
 
-
+def convert_amount_string(amount_str):
+    """
+    Convierte un string con formato de monto (usando coma como separador decimal)
+    a un valor float.
+    """
+    try:
+        # Reemplazar coma por punto para la conversión
+        amount_str = amount_str.replace(',', '.')
+        return float(amount_str)
+    except (ValueError, AttributeError):
+        return None
 
 
 # Actualiza los items en la ventana flotante
@@ -85,12 +95,15 @@ def update_selected_items_window():
     for item_id, monto in selected_ids.items():
         cursor.execute("SELECT Apellido, Nombre FROM Usuarios WHERE id=?", (item_id,))
         apellido, nombre = cursor.fetchone()
-        monto_str = f" - Monto: {monto}" if monto is not None else ""
+        # Formatear el monto con coma como separador decimal
+        monto_str = f" - Monto: {monto:,.2f}".replace('.', ',') if monto is not None else ""
         selected_listbox.insert(tk.END, f"{item_id}: {apellido}, {nombre}{monto_str}")
         
-        # Sumar al subtotal si hay monto
         if monto is not None:
             subtotal += monto
+    
+    # Actualizar el label del subtotal con formato de moneda usando coma
+    subtotal_label.config(text=f"$ {subtotal:,.2f}".replace('.', ','))
     
     # Actualizar el label del subtotal con formato de moneda
     subtotal_label.config(text=f"$ {subtotal:,.2f}")
@@ -102,17 +115,21 @@ def ask_for_amount(event):
     item_id = int(item.split(':')[0])
     
     current_amount = selected_ids.get(item_id, None)
+    current_amount_str = f"{current_amount:.2f}".replace('.', ',') if current_amount is not None else ""
     
-    amount = simpledialog.askinteger("Ingresar Monto", 
-                                     f"Ingrese el monto para el empleado {item_id}:",
-                                     initialvalue=current_amount)
+    # Usar un diálogo personalizado para entrada con coma
+    amount_str = simpledialog.askstring("Ingresar Monto", 
+                                      f"Ingrese el monto para el empleado {item_id}:",
+                                      initialvalue=current_amount_str)
     
-    if amount == 0:
+    if amount_str is not None:
+        amount = convert_amount_string(amount_str)
+        if amount == 0:
             selected_ids.pop(item_id)
             update_selected_items_window()
-    elif amount is not None:
-        selected_ids[item_id] = amount
-        update_selected_items_window()
+        elif amount is not None:
+            selected_ids[item_id] = amount
+            update_selected_items_window()
     
 
 
@@ -259,18 +276,18 @@ def on_select(event):
         del selected_ids[item_id]
         tree.item(selected_item, tags=())
     else:
-        # Si no está seleccionado, pedimos el monto y lo agregamos
-        amount = simpledialog.askinteger("Ingresar Monto", 
-                                       f"Ingrese el monto para el empleado {item_id}:",
-                                       initialvalue=None)
+        # Si no está seleccionado, pedimos el monto
+        amount_str = simpledialog.askstring("Ingresar Monto", 
+                                          f"Ingrese el monto para el empleado {item_id}:",
+                                          initialvalue=None)
         
-        if amount == 0:
-            # Si el monto es 0, no lo agregamos
-            return
-        elif amount is not None:
-            # Si se ingresó un monto válido, lo agregamos
-            selected_ids[item_id] = amount
-            tree.item(selected_item, tags=('selected',))
+        if amount_str is not None:
+            amount = convert_amount_string(amount_str)
+            if amount == 0:
+                return
+            elif amount is not None:
+                selected_ids[item_id] = amount
+                tree.item(selected_item, tags=('selected',))
     
     update_export_button()
     update_selected_items_window()
